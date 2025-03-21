@@ -6,16 +6,20 @@ namespace MrThaw
 {
     public class AIPlanner
     {
-        public List<AIGoal> goalList = new List<AIGoal>();
+       public List<AIGoal> goalList = new List<AIGoal>();
 
         public List<AIAction> currentGoalActionList = new List<AIAction>();
 
-        public Dictionary<string, object> worldStates = new Dictionary<string, object>();
+        public List<AIAction> minCostActionList = new List<AIAction>();
+
+        public Dictionary<string, object> currentWorldStates = new Dictionary<string, object>();
 
         public AIGoal currentGoal;
 
         public void SetUp(List<AIGoal> _goalList)
         {
+            GenerateAgentCurrentWorldStates();
+
             goalList = _goalList;
             goalList.ForEach(g => g.SetUp());
 
@@ -25,6 +29,14 @@ namespace MrThaw
             currentGoalActionList.ForEach(a => a.SetUp());
         }
 
+        private void GenerateAgentCurrentWorldStates()
+        {
+            currentWorldStates = new Dictionary<string, object>();
+            currentWorldStates.Add("hasPatrolPointToSecure", false);
+            currentWorldStates.Add("reachedPatrolPoint", false);
+            currentWorldStates.Add("secureArea", false);
+        }
+             
         public void CalculateGoalPriority()
         {
             List<AIGoal> aIGoals = goalList;
@@ -34,13 +46,96 @@ namespace MrThaw
             }
         }
 
-        public void CalculateActionPlan()
+        public Queue<AIAction> CalculateActionPlan()
         {
             List<AIAction> actionList = currentGoalActionList;
             List<AIActionNode> collectedActionNodeList = new List<AIActionNode>();
-            BuildActionTree(actionList, collectedActionNodeList, currentGoal.EndGoal, null);
 
-            DebugActionNode(collectedActionNodeList);
+            float minCostPlanSoFar = Mathf.Infinity;
+
+
+            var tGoals = goalList.OrderBy(x => x.Priority);
+
+            AIGoal activeGoal = null;
+
+            foreach (AIGoal goal in tGoals)
+            {
+                //if (!goal.IsApplicapable(ai) || AIWorldState.ConditionsMatch(goal.goalStates, currentWorldState) || !AIWorldState.ConditionsMatch(goal.sensorPreCons, currentWorldState))
+                //{
+                //    goal.Applicapable = false;
+                //    continue;
+                //}
+                //goal.Applicapable = true;
+
+                minCostActionList.Clear();
+            
+
+                // Creates paths including first lowest cost action path
+                float maxCSoFar = Mathf.Infinity;
+
+                //List<AIAction> applicapableNRelatedActions = new List<AIAction>();
+                //foreach (var action in applicapableActions)
+                //{
+                //    if (goalsToRelatedActions[goal].Contains(action))
+                //        applicapableNRelatedActions.Add(action);
+                //}
+
+                BuildActionTree(actionList, collectedActionNodeList, new AIActionNode(), currentWorldStates, currentGoal.EndGoal, ref minCostPlanSoFar);
+
+                DebugActionNode(collectedActionNodeList);
+
+
+                if (minCostActionList.Count > 0)
+                {
+                    Queue<AIAction> actionQ = new Queue<AIAction>();
+                    foreach (AIAction action in minCostActionList)
+                    {
+                        Debug.Log(action.GetType().Name);
+                        actionQ.Enqueue(action);
+                    }
+                    activeGoal = goal;
+
+                    return actionQ;
+                }
+            }
+
+            //if (collectedActionNodeList.Count > 0)
+            //{
+            //    AIActionNode lowCostActionNode = null;
+            //    int minCost = int.MaxValue;
+            //    for (int x = 0; x < collectedActionNodeList.Count; x++)
+            //    {
+            //        AIActionNode actionNode = collectedActionNodeList[x];
+            //        if(actionNode.Cost < minCost)
+            //        {
+            //            minCost = actionNode.Cost;
+            //            lowCostActionNode = actionNode;
+            //        }
+            //    }
+
+
+            //    Queue<AIAction> actionQueue = new Queue<AIAction>();
+            //    int count = 0;
+            //    if (lowCostActionNode != null)
+            //    {
+            //        AIActionNode tempNode = lowCostActionNode;
+            //        while (tempNode != null)
+            //        {
+            //            Debug.Log(++count + " low Cost Action : " + tempNode.Action.GetType());
+            //            actionQueue.Enqueue(tempNode.Action);
+            //            tempNode = tempNode.ParentNode;
+            //        }
+            //    }
+
+            //    Debug.Log("Action Queue : " + string.Join(",", actionQueue));
+
+            //    return actionQueue;
+
+            //}
+
+
+
+            return new Queue<AIAction>();
         }
 
         private void DebugActionNode(List<AIActionNode> collectedActionNodeList)
@@ -68,43 +163,82 @@ namespace MrThaw
             }
         }
 
-        private void BuildActionTree(List<AIAction> actionList, List<AIActionNode> collectedActionNodeList, Dictionary<string, object> goal, AIActionNode rootNode)
+        //private void BuildActionTree(List<AIAction> actionList, List<AIActionNode> collectedActionNodeList, Dictionary<string, object> goal, AIActionNode rootNode)
+        //{
+        //    int i = 0;
+        //    bool foundSomething = false;
+        //    foreach (AIAction action in actionList)
+        //    {
+        //        if (action.CheckEffects(goal))
+        //        {
+        //            foundSomething = true;
+        //            Debug.Log(++i + " Action found : " + action.GetType().Name);
+
+        //            List<AIAction> updatedActionList = new List<AIAction>(actionList);
+        //            updatedActionList.Remove(action);
+
+        //            Dictionary<string, object> tempGoal = new Dictionary<string, object>(goal);                
+        //            CopyWorldStates(action.Preconditions, tempGoal);
+
+        //            int parentNodeCost = rootNode == null ? 0 : rootNode.Cost;
+        //            AIActionNode selectedNode = new AIActionNode(action.cost + parentNodeCost, rootNode, action);
+
+        //            BuildActionTree(updatedActionList, collectedActionNodeList, tempGoal, selectedNode);
+        //        }
+        //    }
+
+        //    if(! foundSomething && rootNode != null) // Found something in above but not in this level
+        //        collectedActionNodeList.Add(rootNode);
+        //}
+
+        public void BuildActionTree(List<AIAction> actionList, List<AIActionNode> collectedActionNodeList, AIActionNode rootNode, Dictionary<string, object> cWorldStates, Dictionary<string, object> currentGoalStates, ref float minCostPlanSoFar)
         {
-            int i = 0;
-            bool foundSomething = false;
-            foreach (AIAction action in actionList)
+            foreach(AIAction action in actionList)
             {
-                if (action.CheckEffects(goal))
+                if (rootNode.Cost + action.cost < minCostPlanSoFar && MatchWorldStates(action.Preconditions, cWorldStates))
                 {
-                    foundSomething = true;
-                    Debug.Log(++i + " Action found : " + action.GetType().Name);
 
-                    List<AIAction> updatedActionList = new List<AIAction>(actionList);
-                    updatedActionList.Remove(action);
+                    AIActionNode newNode = new AIActionNode(rootNode.Cost + action.cost, rootNode, action);
+                    Dictionary<string, object> newWorldStates = new Dictionary<string, object>(cWorldStates);
+                    CopyWorldStates(action.Effects, newWorldStates); // // Alters the copy of agent's internal state to action effects
 
-                    Dictionary<string, object> tempGoal = new Dictionary<string, object>(goal);                
-                    CopyWorldStates(action.Preconditions, tempGoal);
+                    if (MatchWorldStates(currentGoalStates, newWorldStates))
+                    {
+                        collectedActionNodeList.Add(newNode);
+                        minCostPlanSoFar = newNode.Cost;
+                        minCostActionList.Clear();
+                       
+                        AIActionNode tempNode = newNode;
+                        while (tempNode.ParentNode != null)
+                        {
+                            minCostActionList.Insert(0, tempNode.Action);
+                            tempNode = tempNode.ParentNode;
+                        }
+                    }
+                    else
+                    {
+                        List<AIAction> newActionList = new List<AIAction>(actionList);
+                        newActionList.Remove(action);
+                        BuildActionTree(newActionList, collectedActionNodeList, newNode, newWorldStates, currentGoalStates, ref minCostPlanSoFar);
+                    }
 
-                    BuildActionTree(updatedActionList, collectedActionNodeList, tempGoal, new AIActionNode(1, rootNode, action));
                 }
             }
-
-            if(! foundSomething)
-                collectedActionNodeList.Add(rootNode);
         }
+
+  
+
 
         public bool MatchWorldStates(Dictionary<string, object> conditions, Dictionary<string, object> worldStateToCheck)
         {
             foreach (KeyValuePair<string, object> kv in conditions)
             {
-                if (worldStateToCheck.ContainsKey(kv.Key))
+                if (! worldStateToCheck.ContainsKey(kv.Key))
                 {
-                    if (!worldStateToCheck[kv.Key].Equals(kv.Value))
-                    {
-                        return false;
-                    }
+                    return false;
                 }
-                else
+
+                if (! worldStateToCheck[kv.Key].Equals(kv.Value))
                 {
                     return false;
                 }
